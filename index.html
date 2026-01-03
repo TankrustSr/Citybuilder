@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>City Gen V12 - Roof Details</title>
+    <title>City Gen V34 - Rooftop Railings</title>
     <style>
         body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
-        canvas { display: block; }
+        canvas { display: block; outline: none; }
         
         #controls {
             position: absolute;
@@ -20,15 +20,18 @@
             border: 1px solid #444;
             font-size: 13px;
             color: #eee;
+            z-index: 100;
+            max-height: 95vh;
+            overflow-y: auto;
         }
 
-        .control-group { margin-bottom: 12px; }
+        .control-group { margin-bottom: 10px; }
         label { display: block; font-weight: 700; margin-bottom: 4px; color: #ccc; display: flex; justify-content: space-between; }
         input[type=range] { width: 100%; cursor: pointer; accent-color: #fff; }
         
         button {
             width: 100%;
-            padding: 12px;
+            padding: 8px; 
             margin-top: 5px;
             background: #eee;
             color: #111;
@@ -39,452 +42,651 @@
             text-transform: uppercase;
             letter-spacing: 1px;
             transition: background 0.2s;
+            font-size: 11px;
         }
         button:hover { background: #fff; }
-        button#exportBtn { background: #4a90e2; color: white; }
-        button#exportBtn:hover { background: #357abd; }
+        
+        .angle-inputs { display: flex; gap: 8px; margin-bottom: 10px; }
+        .angle-inputs div { flex: 1; }
+        .angle-inputs input { 
+            width: 100%; background: #222; border: 1px solid #555; color: #fff; 
+            padding: 4px; border-radius: 3px; text-align: center;
+        }
+        .angle-inputs span { font-size: 10px; color: #888; display: block; text-align: center; margin-bottom: 2px;}
+
+        .view-group { display: flex; gap: 4px; margin-bottom: 12px; }
+        .view-group button { margin-top: 0; flex: 1; background: #333; color: #ccc; border: 1px solid #555; }
+        .view-group button:hover { background: #555; color: #fff; }
+
+        .btn-group { display: flex; gap: 5px; margin-top: 10px; }
+        .btn-group button { margin-top: 0; }
+
+        button.primary { background: #4a90e2; color: white; }
+        button.primary:hover { background: #357abd; }
+        button.secondary { background: #e2a04a; color: white; }
+        button.secondary:hover { background: #bd843b; }
+        button:disabled { background: #555; color: #888; cursor: not-allowed; }
+        
         .val { color: #888; font-weight: normal; }
+        
+        #loading { display: none; text-align: center; color: #888; margin-top: 5px; font-style: italic; }
     </style>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
 </head>
 <body>
 
-<canvas id="cityCanvas"></canvas>
-
 <div id="controls">
     <div class="control-group">
-        <label>Fisheye / FOV <span class="val" id="fovVal">600</span></label>
-        <input type="range" id="fov" min="300" max="1500" value="600">
+        <label>Fisheye (FOV) <span class="val" id="fovVal">80</span></label>
+        <input type="range" id="fov" min="10" max="140" value="80">
+    </div>
+    
+    <div class="control-group">
+        <label>Major Roads <span class="val" id="majorVal">50</span></label>
+        <input type="range" id="major" min="20" max="100" value="50">
     </div>
     <div class="control-group">
-        <label>Road Width <span class="val" id="roadVal">12</span></label>
-        <input type="range" id="road" min="2" max="30" value="12">
+        <label>Minor Roads <span class="val" id="minorVal">15</span></label>
+        <input type="range" id="minor" min="5" max="40" value="15">
     </div>
     <div class="control-group">
-        <label>Skyscraper H. <span class="val" id="heightVal">90</span></label>
-        <input type="range" id="height" min="20" max="250" value="90">
+        <label>Block Divisions <span class="val" id="gridVal">4</span></label>
+        <input type="range" id="grid" min="2" max="8" step="1" value="4">
+    </div>
+
+    <div class="control-group">
+        <label>Height Scale <span class="val" id="heightVal">120</span></label>
+        <input type="range" id="height" min="20" max="300" value="120">
+    </div>
+    <div class="control-group">
+        <label>Detail Scale <span class="val" id="scaleVal">3</span></label>
+        <input type="range" id="scale" min="1" max="6" step="0.5" value="3">
+    </div>
+    <div class="control-group">
+        <label>Detail Darkness <span class="val" id="darknessVal">50%</span></label>
+        <input type="range" id="darkness" min="0" max="100" step="5" value="50">
     </div>
     <div class="control-group">
         <label>Roof Clutter <span class="val" id="clutterVal">0.6</span></label>
         <input type="range" id="clutter" min="0" max="1.0" step="0.1" value="0.6">
     </div>
     <div class="control-group">
-        <label>Grid Size <span class="val" id="gridVal">30</span></label>
-        <input type="range" id="grid" min="10" max="50" step="1" value="30">
+        <label>Railing Chance <span class="val" id="railingVal">0.4</span></label>
+        <input type="range" id="railing" min="0" max="1.0" step="0.1" value="0.4">
     </div>
+
+    <hr style="border: 0; border-top: 1px solid #444; margin: 10px 0;">
+
+    <div class="angle-inputs">
+        <div>
+            <span>Vertical (Polar)</span>
+            <input type="number" id="polarInput" value="60" step="1">
+        </div>
+        <div>
+            <span>Horizontal (Azimuth)</span>
+            <input type="number" id="azimuthInput" value="45" step="1">
+        </div>
+    </div>
+
+    <div class="view-group">
+        <button id="viewTop">Top View</button>
+        <button id="viewSide">Side View</button>
+    </div>
+    
     <button id="generateBtn">Rebuild City</button>
-    <button id="exportBtn">Export SVG</button>
+    
+    <div class="btn-group">
+        <button id="exportPngBtn">Save View</button>
+        <button id="exportDepthBtn" class="primary">Save Depth</button>
+    </div>
+    <button id="exportDetailBtn" class="secondary" style="margin-top:5px;">Save Detail Layer</button>
+    
+    <div id="loading">Processing...</div>
 </div>
 
 <script>
-    const canvas = document.getElementById('cityCanvas');
-    const ctx = canvas.getContext('2d');
-    
-    // UI Elements
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111111);
+
+    const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 1, 6000);
+    camera.position.set(600, 600, 600);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    dirLight.position.set(500, 1500, 1000);
+    scene.add(dirLight);
+    const fillLight = new THREE.DirectionalLight(0x9999ff, 0.3);
+    fillLight.position.set(-500, 200, -500);
+    scene.add(fillLight);
+
+    let cityGroup = new THREE.Group();
+    scene.add(cityGroup);
+    let maxCityHeight = 100; 
+
+    // UI Handling
     const els = {
         fov: document.getElementById('fov'),
-        road: document.getElementById('road'),
-        height: document.getElementById('height'),
-        clutter: document.getElementById('clutter'),
         grid: document.getElementById('grid'),
+        major: document.getElementById('major'),
+        minor: document.getElementById('minor'),
+        height: document.getElementById('height'),
+        scale: document.getElementById('scale'),
+        darkness: document.getElementById('darkness'),
+        clutter: document.getElementById('clutter'),
+        railing: document.getElementById('railing'),
         btn: document.getElementById('generateBtn'),
-        exportBtn: document.getElementById('exportBtn')
+        viewTop: document.getElementById('viewTop'),
+        viewSide: document.getElementById('viewSide'),
+        polarInput: document.getElementById('polarInput'),
+        azInput: document.getElementById('azimuthInput'),
+        exportPngBtn: document.getElementById('exportPngBtn'),
+        exportDepthBtn: document.getElementById('exportDepthBtn'),
+        exportDetailBtn: document.getElementById('exportDetailBtn'),
+        loading: document.getElementById('loading')
     };
 
     Object.keys(els).forEach(key => {
-        if(key.includes('Btn')) return;
+        if(key.includes('Btn') || key.includes('view') || key.includes('Input') || key === 'loading') return;
         els[key].addEventListener('input', (e) => {
-            document.getElementById(key + 'Val').innerText = e.target.value;
-            if (['road', 'height', 'grid', 'clutter'].includes(key)) {
-                generateMap();
+            let valTxt = e.target.value;
+            if(key === 'darkness') valTxt += '%';
+            document.getElementById(key + 'Val').innerText = valTxt;
+            if(key === 'fov') {
+                camera.fov = parseInt(e.target.value);
+                camera.updateProjectionMatrix();
             } else {
-                draw(); // Just camera update
+                generateCity();
             }
         });
     });
 
-    els.btn.addEventListener('click', generateMap);
-    els.exportBtn.addEventListener('click', exportSVG);
+    els.btn.addEventListener('click', generateCity);
+    els.exportPngBtn.addEventListener('click', () => saveImage('view'));
+    els.exportDepthBtn.addEventListener('click', () => saveImage('depth'));
+    els.exportDetailBtn.addEventListener('click', () => saveImage('detail'));
 
-    let buildings = [];
-    let width, height;
+    controls.addEventListener('change', () => {
+        const spherical = new THREE.Spherical().setFromVector3(camera.position);
+        const polarDeg = Math.round(THREE.MathUtils.radToDeg(spherical.phi));
+        const azDeg = Math.round(THREE.MathUtils.radToDeg(spherical.theta));
+        if (document.activeElement !== els.polarInput) els.polarInput.value = polarDeg;
+        if (document.activeElement !== els.azInput) els.azInput.value = azDeg;
+    });
 
-    function resize() {
-        width = canvas.width = window.innerWidth;
-        height = canvas.height = window.innerHeight;
-        draw();
+    const updateCameraFromInputs = () => {
+        const pVal = parseFloat(els.polarInput.value);
+        const aVal = parseFloat(els.azInput.value);
+        if (isNaN(pVal) || isNaN(aVal)) return;
+        const polar = THREE.MathUtils.degToRad(pVal);
+        const az = THREE.MathUtils.degToRad(aVal);
+        const dist = camera.position.distanceTo(new THREE.Vector3(0,0,0));
+        const spherical = new THREE.Spherical(dist, polar, az);
+        camera.position.setFromSpherical(spherical);
+        camera.lookAt(0,0,0);
+        controls.update();
+    };
+
+    els.polarInput.addEventListener('input', updateCameraFromInputs);
+    els.azInput.addEventListener('input', updateCameraFromInputs);
+
+    els.viewTop.addEventListener('click', () => {
+        controls.target.set(0,0,0);
+        camera.position.set(0, 1200, 0); 
+        camera.lookAt(0,0,0);
+        controls.update();
+        els.polarInput.value = 0;
+        els.azInput.value = 0;
+    });
+
+    els.viewSide.addEventListener('click', () => {
+        controls.target.set(0,0,0);
+        const dist = 1000;
+        const polar = THREE.MathUtils.degToRad(60); 
+        const az = THREE.MathUtils.degToRad(45);
+        const spherical = new THREE.Spherical(dist, polar, az);
+        camera.position.setFromSpherical(spherical);
+        camera.lookAt(0,0,0);
+        controls.update();
+    });
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // --- GEOMETRY ---
+    function applyVertexColor(geometry, color) {
+        const count = geometry.attributes.position.count;
+        const colors = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+        }
+        geometry.setAttribute('detailColor', new THREE.BufferAttribute(colors, 3));
     }
-    window.addEventListener('resize', resize);
 
-    function generateMap() {
-        buildings = [];
-        const gridSize = parseInt(els.grid.value);
-        const roadGap = parseInt(els.road.value);
+    function createDetailedBuilding(w, h, d, x, z, floorH, detailColor, railingChance) {
+        const geoms = [];
+        const white = new THREE.Color(1.0, 1.0, 1.0); // Body ID (Occluder)
+        const black = new THREE.Color(0.0, 0.0, 0.0); // Detail ID (Visible)
+
+        // 1. Core Building Body
+        const coreGeo = new THREE.BoxGeometry(w, h, d);
+        coreGeo.translate(x, h/2, z);
+        applyVertexColor(coreGeo, white);
+        geoms.push(coreGeo);
+
+        // 2. Facade Details (Ledges/Frames)
+        const style = Math.floor(Math.random() * 4);
+        if (h > 20 && w > 10 && d > 10 && style > 0) {
+            const ledgeProtrusion = 1.5; 
+            const numFloors = Math.floor(h / floorH);
+
+            if (style === 1 || style === 2) { 
+                for(let i=1; i<numFloors; i++) {
+                    const yPos = i * floorH;
+                    const ledgeGeo = new THREE.BoxGeometry(w + ledgeProtrusion*2, floorH * 0.15, d + ledgeProtrusion*2);
+                    ledgeGeo.translate(x, yPos, z);
+                    applyVertexColor(ledgeGeo, detailColor);
+                    geoms.push(ledgeGeo);
+                }
+            }
+            if (style === 2 || style === 3) {
+                const spacing = Math.max(8, floorH * 1.5); 
+                const colsX = Math.floor(w / spacing);
+                const colsZ = Math.floor(d / spacing);
+                for(let i=0; i<=colsX; i++) {
+                    const xOff = (i * (w/colsX)) - (w/2);
+                    const p1 = new THREE.BoxGeometry(1.5, h, 1.5);
+                    p1.translate(x + xOff, h/2, z + d/2);
+                    applyVertexColor(p1, detailColor);
+                    geoms.push(p1);
+                    const p2 = new THREE.BoxGeometry(1.5, h, 1.5);
+                    p2.translate(x + xOff, h/2, z - d/2);
+                    applyVertexColor(p2, detailColor);
+                    geoms.push(p2);
+                }
+                for(let i=0; i<=colsZ; i++) {
+                    const zOff = (i * (d/colsZ)) - (d/2);
+                    const p1 = new THREE.BoxGeometry(1.5, h, 1.5);
+                    p1.translate(x + w/2, h/2, z + zOff);
+                    applyVertexColor(p1, detailColor);
+                    geoms.push(p1);
+                    const p2 = new THREE.BoxGeometry(1.5, h, 1.5);
+                    p2.translate(x - w/2, h/2, z + zOff);
+                    applyVertexColor(p2, detailColor);
+                    geoms.push(p2);
+                }
+            }
+        }
+
+        // 3. Rooftop Railings / Parapet Walls
+        // Only on larger buildings
+        if (Math.random() < railingChance && w > 20 && d > 20) {
+            const railH = floorH * 0.4; // Height of railing
+            const railThick = 1.5;
+            const roofY = h; 
+
+            // Front & Back (along Width)
+            const r1 = new THREE.BoxGeometry(w, railH, railThick);
+            r1.translate(x, roofY + railH/2, z + d/2 - railThick/2);
+            applyVertexColor(r1, white); // Part of body for occlusion
+            geoms.push(r1);
+
+            const r2 = new THREE.BoxGeometry(w, railH, railThick);
+            r2.translate(x, roofY + railH/2, z - d/2 + railThick/2);
+            applyVertexColor(r2, white);
+            geoms.push(r2);
+
+            // Left & Right (along Depth), inset to avoid corner overlap
+            const r3 = new THREE.BoxGeometry(railThick, railH, d - 2*railThick);
+            r3.translate(x + w/2 - railThick/2, roofY + railH/2, z);
+            applyVertexColor(r3, white);
+            geoms.push(r3);
+
+            const r4 = new THREE.BoxGeometry(railThick, railH, d - 2*railThick);
+            r4.translate(x - w/2 + railThick/2, roofY + railH/2, z);
+            applyVertexColor(r4, white);
+            geoms.push(r4);
+        }
+
+
+        if (geoms.length > 0) return THREE.BufferGeometryUtils.mergeBufferGeometries(geoms);
+        return null;
+    }
+
+    function generateCity() {
+        while(cityGroup.children.length > 0){ 
+            const obj = cityGroup.children[0];
+            if(obj.geometry) obj.geometry.dispose();
+            if(obj.material) {
+                if(Array.isArray(obj.material)) obj.material.forEach(m=>m.dispose());
+                else obj.material.dispose();
+            }
+            cityGroup.remove(obj); 
+        }
+
+        const divisions = parseInt(els.grid.value);
+        const roadMajor = parseInt(els.major.value);
+        const roadMinor = parseInt(els.minor.value);
         const baseHeight = parseInt(els.height.value);
         const clutterChance = parseFloat(els.clutter.value);
-        
-        const maxBlock = 4; 
-        const mapPhysicalSize = 1600; 
-        const cellSize = mapPhysicalSize / gridSize;
+        const detailScale = parseFloat(els.scale.value); 
+        const floorH = 2.5 * detailScale; 
+        const railingChance = parseFloat(els.railing.value);
 
-        let occupied = new Array(gridSize).fill(0).map(() => new Array(gridSize).fill(false));
+        // Detail color logic
+        const darknessMult = 1.0 - (parseInt(els.darkness.value) / 100.0);
+        const detailColor = new THREE.Color(darknessMult, darknessMult, darknessMult);
+        const white = new THREE.Color(1.0, 1.0, 1.0);
 
-        for(let x = 0; x < gridSize; x++) {
-            for(let y = 0; y < gridSize; y++) {
-                
-                if(occupied[x][y]) continue;
+        const mapSize = 1600;
+        let blocks = [{ x: 0, z: 0, w: mapSize, d: mapSize }];
 
-                // Bin Packing Logic
-                let blockW, blockD;
-                let attempts = 0;
-                let fits = false;
+        function splitBlocks(currentBlocks, gap) {
+            let nextBlocks = [];
+            currentBlocks.forEach(b => {
+                let splitVert = Math.random() > 0.5;
+                if (b.w > b.d * 1.5) splitVert = true;
+                else if (b.d > b.w * 1.5) splitVert = false;
 
-                do {
-                    blockW = Math.floor(Math.random() * maxBlock) + 1;
-                    blockD = Math.floor(Math.random() * maxBlock) + 1;
-                    
-                    const realW = (blockW * cellSize) - roadGap;
-                    const realD = (blockD * cellSize) - roadGap;
-
-                    if (realW <= 1 || realD <= 1) { attempts++; continue; }
-                    const ratio = Math.max(realW, realD) / Math.min(realW, realD);
-                    if (ratio > 3.0) { attempts++; continue; }
-                    if (x + blockW > gridSize || y + blockD > gridSize) { attempts++; continue; }
-
-                    let clear = true;
-                    for(let i = 0; i < blockW; i++) {
-                        for(let j = 0; j < blockD; j++) {
-                            if(occupied[x+i][y+j]) { clear = false; break; }
-                        }
-                    }
-                    if(clear) fits = true;
-                    attempts++;
-                } while(!fits && attempts < 50);
-
-                if(!fits) { blockW = 1; blockD = 1; }
-
-                for(let i = 0; i < blockW; i++) {
-                    for(let j = 0; j < blockD; j++) { occupied[x+i][y+j] = true; }
-                }
-
-                const cellLeft = (x * cellSize) - (mapPhysicalSize/2);
-                const cellTop = (y * cellSize) - (mapPhysicalSize/2);
-                const totalW = blockW * cellSize;
-                const totalD = blockD * cellSize;
-                const bWidth = totalW - roadGap;
-                const bDepth = totalD - roadGap;
-
-                if (bWidth <= 1 || bDepth <= 1) continue;
-
-                const centerX = cellLeft + (totalW / 2);
-                const centerY = cellTop + (totalD / 2);
-
-                let h;
-                if (blockW === 1 && blockD === 1) {
-                    h = cellSize * (0.5 + Math.random() * 1.5);
+                if (splitVert) {
+                    if (b.w < 200) { nextBlocks.push(b); return; }
+                    const splitPt = 0.35 + Math.random() * 0.3;
+                    const w1 = b.w * splitPt - gap/2;
+                    const w2 = b.w * (1-splitPt) - gap/2;
+                    nextBlocks.push({ x: b.x - b.w/2 + w1/2, z: b.z, w: w1, d: b.d });
+                    nextBlocks.push({ x: b.x + b.w/2 - w2/2, z: b.z, w: w2, d: b.d });
                 } else {
-                    const bulkBonus = (blockW * blockD) * (baseHeight * 0.2);
-                    h = baseHeight + bulkBonus + (Math.random() ** 3) * (baseHeight * 3.0);
+                    if (b.d < 200) { nextBlocks.push(b); return; }
+                    const splitPt = 0.35 + Math.random() * 0.3;
+                    const d1 = b.d * splitPt - gap/2;
+                    const d2 = b.d * (1-splitPt) - gap/2;
+                    nextBlocks.push({ x: b.x, z: b.z - b.d/2 + d1/2, w: b.w, d: d1 });
+                    nextBlocks.push({ x: b.x, z: b.z + b.d/2 - d2/2, w: b.w, d: d2 });
+                }
+            });
+            return nextBlocks;
+        }
+
+        for(let i=0; i<divisions; i++) blocks = splitBlocks(blocks, roadMajor); 
+        for(let i=0; i<2; i++) blocks = splitBlocks(blocks, roadMinor);
+
+        maxCityHeight = baseHeight;
+
+        const allBuildingGeoms = [];
+        const allJunkGeoms = [];
+        const allJunkLines = []; // Store junk contours here
+
+        blocks.forEach(block => {
+            const margin = 2; 
+            const buildW = block.w - margin;
+            const buildD = block.d - margin;
+            if (buildW < 15 || buildD < 15) return;
+
+            let subDivs = [];
+            if (buildW > buildD * 2.5) {
+                const count = Math.floor(buildW / 50);
+                const segW = buildW / count;
+                for(let k=0; k<count; k++) subDivs.push({ x: block.x - buildW/2 + segW*k + segW/2, z: block.z, w: segW-2, d: buildD });
+            } else if (buildD > buildW * 2.5) {
+                const count = Math.floor(buildD / 50);
+                const segD = buildD / count;
+                for(let k=0; k<count; k++) subDivs.push({ x: block.x, z: block.z - buildD/2 + segD*k + segD/2, w: buildW, d: segD-2 });
+            } else {
+                subDivs.push({ x: block.x, z: block.z, w: buildW, d: buildD });
+            }
+
+            subDivs.forEach(b => {
+                const footprint = b.w * b.d;
+                let h;
+                if (footprint < 2000) h = 20 + Math.random() * 40; 
+                else {
+                    const bulkBonus = footprint * (baseHeight * 0.0001);
+                    h = baseHeight + bulkBonus + (Math.random() ** 3) * (baseHeight * 3.5);
                 }
                 
-                let style = Math.floor(Math.random() * 5); // 0-4
+                maxCityHeight = Math.max(maxCityHeight, h);
+                // Pass railing chance
+                const bGeo = createDetailedBuilding(b.w, h, b.d, b.x, b.z, floorH, detailColor, railingChance);
+                if (bGeo) allBuildingGeoms.push(bGeo);
 
-                // --- ROOF DETAILS GENERATION ---
-                let junk = [];
-                // Only put junk on buildings that aren't tiny slivers
-                if (Math.random() < clutterChance && bWidth > 15 && bDepth > 15) {
-                    // Decide how many items (1 to 3)
+                if (Math.random() < clutterChance && b.w > 15 && b.d > 15) {
                     const count = Math.floor(Math.random() * 3) + 1;
-                    
                     for(let k=0; k<count; k++) {
-                        // Dimension of the junk
-                        const jw = Math.max(5, Math.random() * (bWidth * 0.4));
-                        const jd = Math.max(5, Math.random() * (bDepth * 0.4));
-                        const jh = 3 + Math.random() * 8; // Height 3 to 11
+                        const jw = Math.max(4, Math.random() * (b.w * 0.4));
+                        const jd = Math.max(4, Math.random() * (b.d * 0.4));
+                        const jh = 3 + Math.random() * 8; 
+                        maxCityHeight = Math.max(maxCityHeight, h + jh);
+                        const jx = (Math.random() * 2 - 1) * ((b.w/2) - (jw/2));
+                        const jz = (Math.random() * 2 - 1) * ((b.d/2) - (jd/2));
                         
-                        // Position (offset from center)
-                        // Ensure it fits on roof
-                        const maxX = (bWidth/2) - (jw/2);
-                        const maxY = (bDepth/2) - (jd/2);
-                        const jx = (Math.random() * 2 - 1) * maxX;
-                        const jy = (Math.random() * 2 - 1) * maxY;
+                        const junkGeo = new THREE.BoxGeometry(jw, jh, jd);
+                        junkGeo.translate(b.x + jx, h + jh/2, b.z + jz);
+                        
+                        // JUNK BODY: White (Transparency Mask)
+                        applyVertexColor(junkGeo, white);
+                        allJunkGeoms.push(junkGeo);
 
-                        junk.push({
-                            x: jx, y: jy, w: jw, d: jd, h: jh
-                        });
+                        // JUNK EDGES: Create now, before merging
+                        const edgeGeo = new THREE.EdgesGeometry(junkGeo);
+                        allJunkLines.push(edgeGeo);
                     }
                 }
-
-                buildings.push({
-                    x: centerX,
-                    y: centerY,
-                    w: bWidth,
-                    d: bDepth,
-                    h: h,
-                    style: style,
-                    junk: junk
-                });
-            }
-        }
-        draw();
-    }
-
-    function project(x, y, z) {
-        const fov = parseInt(els.fov.value); 
-        const camZ = fov * 1.5; 
-        const dz = camZ - z;
-        if(dz <= 0) return null; 
-        const scale = fov / dz;
-        return { x: width/2 + x * scale, y: height/2 + y * scale };
-    }
-
-    // --- CANVAS RENDER ---
-
-    function draw() {
-        ctx.fillStyle = '#111'; // Black Roads
-        ctx.fillRect(0, 0, width, height);
-        ctx.lineWidth = 1.0;
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = '#000'; 
-
-        buildings.sort((a, b) => {
-            const distA = a.x*a.x + a.y*a.y;
-            const distB = b.x*b.x + b.y*b.y;
-            return distB - distA;
-        });
-
-        buildings.forEach(b => drawBuildingCanvas(b));
-    }
-
-    const COL_SIDE = '#dcdcdc'; 
-    const COL_ROOF = '#ffffff'; 
-    const COL_JUNK = '#eeeeee';
-    const WIN_COLOR = 'rgba(0,0,0,0.6)'; 
-
-    function drawBuildingCanvas(b) {
-        const hw = b.w/2, hd = b.d/2;
-        const corners = [{x:-hw, y:-hd}, {x:hw, y:-hd}, {x:hw, y:hd}, {x:-hw, y:hd}];
-        const top = corners.map(c => project(b.x+c.x, b.y+c.y, b.h));
-        const bot = corners.map(c => project(b.x+c.x, b.y+c.y, 0));
-        
-        if (top.some(p => !p) || bot.some(p => !p)) return;
-
-        // Draw Building Walls
-        if (b.x < 0) drawWallCanvas(top[1], top[2], bot[2], bot[1], b); // Right
-        if (b.x > 0) drawWallCanvas(top[3], top[0], bot[0], bot[3], b); // Left
-        if (b.y < 0) drawWallCanvas(top[2], top[3], bot[3], bot[2], b); // Front
-        if (b.y > 0) drawWallCanvas(top[0], top[1], bot[1], bot[0], b); // Back
-
-        // Draw Main Roof
-        drawPolyCanvas(top[0], top[1], top[2], top[3], COL_ROOF);
-
-        // Draw Roof Details
-        if(b.junk && b.junk.length > 0) {
-            b.junk.forEach(j => {
-                // Absolute world position of junk
-                const jAbsX = b.x + j.x;
-                const jAbsY = b.y + j.y;
-                // Junk base is building height, top is building height + junk height
-                drawBoxCanvas(jAbsX, jAbsY, b.h, j.w, j.d, j.h);
             });
-        }
-    }
-
-    function drawBoxCanvas(bx, by, bz, w, d, h) {
-        const hw = w/2, hd = d/2;
-        const corners = [{x:-hw, y:-hd}, {x:hw, y:-hd}, {x:hw, y:hd}, {x:-hw, y:hd}];
-        const top = corners.map(c => project(bx+c.x, by+c.y, bz+h));
-        const bot = corners.map(c => project(bx+c.x, by+c.y, bz));
-        
-        if (top.some(p => !p) || bot.some(p => !p)) return;
-
-        // Draw visible sides of the junk box (simplied, no windows)
-        ctx.fillStyle = COL_JUNK;
-        
-        // Use generic wall drawing without windows logic
-        const wall = (p1, p2, p3, p4) => {
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.lineTo(p3.x, p3.y);
-            ctx.lineTo(p4.x, p4.y);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-        };
-
-        if (bx < 0) wall(top[1], top[2], bot[2], bot[1]);
-        if (bx > 0) wall(top[3], top[0], bot[0], bot[3]);
-        if (by < 0) wall(top[2], top[3], bot[3], bot[2]);
-        if (by > 0) wall(top[0], top[1], bot[1], bot[0]);
-
-        // Roof of junk
-        drawPolyCanvas(top[0], top[1], top[2], top[3], COL_ROOF);
-    }
-
-    function drawWallCanvas(p1, p2, p3, p4, b) {
-        ctx.fillStyle = COL_SIDE;
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.lineTo(p3.x, p3.y);
-        ctx.lineTo(p4.x, p4.y);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        if (b.style > 0) {
-            ctx.save();
-            ctx.clip(); 
-            ctx.strokeStyle = WIN_COLOR;
-            ctx.lineWidth = 1;
-            drawWindows(ctx, p1, p2, p3, p4, b);
-            ctx.restore();
-            ctx.strokeStyle = '#000';
-            ctx.stroke();
-        }
-    }
-
-    function drawPolyCanvas(p1, p2, p3, p4, color) {
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.lineTo(p3.x, p3.y);
-        ctx.lineTo(p4.x, p4.y);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-    }
-
-    // --- WINDOW LOGIC ---
-    function lerp(start, end, t) { return start + (end - start) * t; }
-
-    function drawWindows(target, p1, p2, p3, p4, b) {
-        const isSvg = Array.isArray(target);
-        const h = b.h; const w = b.w;
-        
-        const line = (x1, y1, x2, y2) => {
-            if (isSvg) {
-                target.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="rgba(0,0,0,0.6)" stroke-width="1" />`);
-            } else {
-                target.beginPath(); target.moveTo(x1, y1); target.lineTo(x2, y2); target.stroke();
-            }
-        };
-
-        if (b.style === 1 || b.style === 3) { 
-            const floors = Math.floor(h / 10); 
-            for (let i = 1; i < floors; i++) {
-                const t = i / floors;
-                line(lerp(p1.x, p4.x, t), lerp(p1.y, p4.y, t), lerp(p2.x, p3.x, t), lerp(p2.y, p3.y, t));
-            }
-        }
-        if (b.style === 2 || b.style === 3) { 
-            const cols = Math.floor(w / 8); 
-            for (let i = 1; i < cols; i++) {
-                const t = i / cols;
-                line(lerp(p1.x, p2.x, t), lerp(p1.y, p2.y, t), lerp(p4.x, p3.x, t), lerp(p4.y, p3.y, t));
-            }
-        }
-        if (b.style === 4) { 
-            const t = 0.5;
-            line(lerp(p1.x, p2.x, t), lerp(p1.y, p2.y, t), lerp(p4.x, p3.x, t), lerp(p4.y, p3.y, t));
-        }
-    }
-
-
-    // --- SVG EXPORT ---
-
-    function exportSVG() {
-        let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
-        svg += `<rect width="100%" height="100%" fill="#111"/>`;
-
-        buildings.sort((a, b) => {
-            const distA = a.x*a.x + a.y*a.y;
-            const distB = b.x*b.x + b.y*b.y;
-            return distB - distA;
         });
 
-        const path = (pts, fill, stroke) => {
-            let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-            for(let i=1; i<pts.length; i++) d += ` L ${pts[i].x.toFixed(1)} ${pts[i].y.toFixed(1)}`;
-            d += " Z";
-            return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="1" stroke-linejoin="round"/>`;
-        };
+        // 1. Create Meshes
+        const matWhite = new THREE.MeshLambertMaterial({ color: 0xffffff });
+        const matJunk = new THREE.MeshLambertMaterial({ color: 0xcccccc });
 
-        // Helper for SVG Roof Details
-        const drawBoxSvg = (bx, by, bz, w, d, h) => {
-            let s = "";
-            const hw = w/2, hd = d/2;
-            const corners = [{x:-hw, y:-hd}, {x:hw, y:-hd}, {x:hw, y:hd}, {x:-hw, y:hd}];
-            const top = corners.map(c => project(bx+c.x, by+c.y, bz+h));
-            const bot = corners.map(c => project(bx+c.x, by+c.y, bz));
+        if (allBuildingGeoms.length > 0) {
+            const mergedBuildings = THREE.BufferGeometryUtils.mergeBufferGeometries(allBuildingGeoms);
+            const cityMesh = new THREE.Mesh(mergedBuildings, matWhite);
+            cityGroup.add(cityMesh);
             
-            if (top.some(p => !p) || bot.some(p => !p)) return "";
+            // Standard Building Outline (will include railings)
+            const edges = new THREE.EdgesGeometry(mergedBuildings, 25); // Higher threshold for cleaner lines
+            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000 }));
+            cityMesh.add(line);
+        }
 
-            const wall = (p1, p2, p3, p4) => path([p1, p2, p3, p4], COL_JUNK, "#000");
+        // 2. Junk Bodies
+        if (allJunkGeoms.length > 0) {
+            const mergedJunk = THREE.BufferGeometryUtils.mergeBufferGeometries(allJunkGeoms);
+            const junkMesh = new THREE.Mesh(mergedJunk, matJunk);
+            cityGroup.add(junkMesh);
+        }
 
-            if (bx < 0) s += wall(top[1], top[2], bot[2], bot[1]);
-            if (bx > 0) s += wall(top[3], top[0], bot[0], bot[3]);
-            if (by < 0) s += wall(top[2], top[3], bot[3], bot[2]);
-            if (by > 0) s += wall(top[0], top[1], bot[1], bot[0]);
+        // 3. Junk Contours (Separate Lines)
+        if (allJunkLines.length > 0) {
+            const mergedLines = THREE.BufferGeometryUtils.mergeBufferGeometries(allJunkLines);
+            const junkContours = new THREE.LineSegments(mergedLines, new THREE.LineBasicMaterial({ color: 0x000000 }));
+            junkContours.userData.isDetailLayer = true; 
+            cityGroup.add(junkContours);
+        }
+    }
 
-            s += path([top[0], top[1], top[2], top[3]], COL_ROOF, "#000");
-            return s;
-        };
+    // --- SHADERS ---
+    const heightShader = {
+        uniforms: { maxHeight: { value: 100.0 } },
+        vertexShader: `
+            varying float vWorldY;
+            void main() {
+                vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                vWorldY = worldPosition.y;
+                gl_Position = projectionMatrix * viewMatrix * worldPosition;
+            }
+        `,
+        fragmentShader: `
+            uniform float maxHeight;
+            varying float vWorldY;
+            void main() {
+                float h = clamp(vWorldY / maxHeight, 0.0, 1.0);
+                gl_FragColor = vec4(vec3(h), 1.0);
+            }
+        `
+    };
 
-        buildings.forEach(b => {
-            const hw = b.w/2, hd = b.d/2;
-            const corners = [{x:-hw, y:-hd}, {x:hw, y:-hd}, {x:hw, y:hd}, {x:-hw, y:hd}];
-            const top = corners.map(c => project(b.x+c.x, b.y+c.y, b.h));
-            const bot = corners.map(c => project(b.x+c.x, b.y+c.y, 0));
-            
-            if (top.some(p => !p) || bot.some(p => !p)) return;
-
-            const drawWallSvg = (p1, p2, p3, p4) => {
-                let s = "";
-                s += path([p1, p2, p3, p4], COL_SIDE, "none");
-                if (b.style > 0) {
-                    let winLines = [];
-                    drawWindows(winLines, p1, p2, p3, p4, b);
-                    s += winLines.join('');
+    const detailShader = {
+        vertexShader: `
+            attribute vec3 detailColor;
+            varying vec3 vDetailColor;
+            void main() {
+                vDetailColor = detailColor;
+                gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec3 vDetailColor;
+            void main() {
+                if (vDetailColor.r > 0.5) {
+                    gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0); // Transparent Body
+                } else {
+                    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); // Visible Detail
                 }
-                s += path([p1, p2, p3, p4], "none", "#000");
-                return s;
-            };
+            }
+        `
+    };
 
-            // Walls
-            if (b.x < 0) svg += drawWallSvg(top[1], top[2], bot[2], bot[1]);
-            if (b.x > 0) svg += drawWallSvg(top[3], top[0], bot[0], bot[3]);
-            if (b.y < 0) svg += drawWallSvg(top[2], top[3], bot[3], bot[2]);
-            if (b.y > 0) svg += drawWallSvg(top[0], top[1], bot[1], bot[0]);
+    function saveImage(mode) {
+        let btn;
+        if(mode === 'view') btn = els.exportPngBtn;
+        else if(mode === 'depth') btn = els.exportDepthBtn;
+        else btn = els.exportDetailBtn;
 
-            // Main Roof
-            svg += path([top[0], top[1], top[2], top[3]], COL_ROOF, "#000");
+        btn.disabled = true;
+        els.loading.style.display = 'block';
 
-            // Roof Details
-            if(b.junk && b.junk.length > 0) {
-                b.junk.forEach(j => {
-                    svg += drawBoxSvg(b.x + j.x, b.y + j.y, b.h, j.w, j.d, j.h);
+        requestAnimationFrame(() => {
+            const originalSize = new THREE.Vector2();
+            renderer.getSize(originalSize);
+            const size = 4096;
+            renderer.setSize(size, size);
+            
+            const originalAspect = camera.aspect;
+            camera.aspect = 1.0;
+            camera.updateProjectionMatrix();
+
+            const originalBackground = scene.background;
+            
+            // VISIBILITY MANAGEMENT
+            const hiddenLines = [];
+            cityGroup.traverse(obj => {
+                if (obj.isLineSegments) {
+                    // Default: Hide all lines
+                    obj.visible = false;
+                    
+                    // EXCEPTION: In Detail Mode, SHOW Junk Contours AND Main building contours (which now include railings)
+                    if (mode === 'detail') {
+                         obj.visible = true;
+                    }
+                    // In View Mode, show everything
+                    if (mode === 'view') {
+                        obj.visible = true;
+                    }
+                    
+                    // Track only if we hid it, so we can restore
+                    if (!obj.visible) hiddenLines.push(obj);
+                }
+            });
+
+            // MATERIAL SWAPPING
+            const restoreMaterials = []; // Array of {obj, mat}
+
+            if(mode === 'depth') {
+                scene.background = new THREE.Color(0x000000); 
+                const depthMat = new THREE.ShaderMaterial({
+                    uniforms: { maxHeight: { value: maxCityHeight * 1.05 } }, 
+                    vertexShader: heightShader.vertexShader,
+                    fragmentShader: heightShader.fragmentShader
+                });
+                scene.overrideMaterial = depthMat;
+            } 
+            else if (mode === 'detail') {
+                scene.background = null; 
+                renderer.setClearColor(0x000000, 0); 
+
+                const detMat = new THREE.ShaderMaterial({
+                    vertexShader: detailShader.vertexShader,
+                    fragmentShader: detailShader.fragmentShader,
+                    transparent: false,
+                    blending: THREE.NoBlending 
+                });
+                
+                // Manually apply to Meshes only (avoid lines)
+                cityGroup.traverse(obj => {
+                    if (obj.isMesh) {
+                        restoreMaterials.push({obj: obj, mat: obj.material});
+                        obj.material = detMat;
+                    }
                 });
             }
+
+            renderer.render(scene, camera);
+
+            renderer.domElement.toBlob(blob => {
+                const a = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                a.href = url;
+                let filename = 'city_view.png';
+                if(mode === 'depth') filename = 'city_depth_map.png';
+                if(mode === 'detail') filename = 'city_detail_layer.png';
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(url);
+
+                // RESET
+                renderer.setSize(originalSize.x, originalSize.y);
+                camera.aspect = originalAspect;
+                camera.updateProjectionMatrix();
+                
+                if(mode === 'depth') {
+                    scene.background = originalBackground;
+                    scene.overrideMaterial = null;
+                } else if (mode === 'detail') {
+                    scene.background = originalBackground;
+                    renderer.setClearColor(0x000000, 1);
+                    // Restore original materials
+                    restoreMaterials.forEach(item => {
+                        item.obj.material = item.mat;
+                    });
+                }
+                
+                // Restore visibility
+                hiddenLines.forEach(l => l.visible = true);
+
+                renderer.render(scene, camera);
+                btn.disabled = false;
+                els.loading.style.display = 'none';
+            }, 'image/png');
         });
-
-        svg += `</svg>`;
-
-        const blob = new Blob([svg], {type: 'image/svg+xml'});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'city_detailed.svg';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
     }
 
-    resize();
-    generateMap();
+    generateCity();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    animate();
 
 </script>
 </body>
 </html>
-
