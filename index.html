@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>City Gen V12 - Roof Details</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
+        canvas { display: block; }
+        
+        #controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(30, 30, 30, 0.95);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            width: 260px;
+            border: 1px solid #444;
+            font-size: 13px;
+            color: #eee;
+        }
+
+        .control-group { margin-bottom: 12px; }
+        label { display: block; font-weight: 700; margin-bottom: 4px; color: #ccc; display: flex; justify-content: space-between; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #fff; }
+        
+        button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 5px;
+            background: #eee;
+            color: #111;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: background 0.2s;
+        }
+        button:hover { background: #fff; }
+        button#exportBtn { background: #4a90e2; color: white; }
+        button#exportBtn:hover { background: #357abd; }
+        .val { color: #888; font-weight: normal; }
+    </style>
+</head>
+<body>
+
+<canvas id="cityCanvas"></canvas>
+
+<div id="controls">
+    <div class="control-group">
+        <label>Fisheye / FOV <span class="val" id="fovVal">600</span></label>
+        <input type="range" id="fov" min="300" max="1500" value="600">
+    </div>
+    <div class="control-group">
+        <label>Road Width <span class="val" id="roadVal">12</span></label>
+        <input type="range" id="road" min="2" max="30" value="12">
+    </div>
+    <div class="control-group">
+        <label>Skyscraper H. <span class="val" id="heightVal">90</span></label>
+        <input type="range" id="height" min="20" max="250" value="90">
+    </div>
+    <div class="control-group">
+        <label>Roof Clutter <span class="val" id="clutterVal">0.6</span></label>
+        <input type="range" id="clutter" min="0" max="1.0" step="0.1" value="0.6">
+    </div>
+    <div class="control-group">
+        <label>Grid Size <span class="val" id="gridVal">30</span></label>
+        <input type="range" id="grid" min="10" max="50" step="1" value="30">
+    </div>
+    <button id="generateBtn">Rebuild City</button>
+    <button id="exportBtn">Export SVG</button>
+</div>
+
+<script>
+    const canvas = document.getElementById('cityCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // UI Elements
+    const els = {
+        fov: document.getElementById('fov'),
+        road: document.getElementById('road'),
+        height: document.getElementById('height'),
+        clutter: document.getElementById('clutter'),
+        grid: document.getElementById('grid'),
+        btn: document.getElementById('generateBtn'),
+        exportBtn: document.getElementById('exportBtn')
+    };
+
+    Object.keys(els).forEach(key => {
+        if(key.includes('Btn')) return;
+        els[key].addEventListener('input', (e) => {
+            document.getElementById(key + 'Val').innerText = e.target.value;
+            if (['road', 'height', 'grid', 'clutter'].includes(key)) {
+                generateMap();
+            } else {
+                draw(); // Just camera update
+            }
+        });
+    });
+
+    els.btn.addEventListener('click', generateMap);
+    els.exportBtn.addEventListener('click', exportSVG);
+
+    let buildings = [];
+    let width, height;
+
+    function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+        draw();
+    }
+    window.addEventListener('resize', resize);
+
+    function generateMap() {
+        buildings = [];
+        const gridSize = parseInt(els.grid.value);
+        const roadGap = parseInt(els.road.value);
+        const baseHeight = parseInt(els.height.value);
+        const clutterChance = parseFloat(els.clutter.value);
+        
+        const maxBlock = 4; 
+        const mapPhysicalSize = 1600; 
+        const cellSize = mapPhysicalSize / gridSize;
+
+        let occupied = new Array(gridSize).fill(0).map(() => new Array(gridSize).fill(false));
+
+        for(let x = 0; x < gridSize; x++) {
+            for(let y = 0; y < gridSize; y++) {
+                
+                if(occupied[x][y]) continue;
+
+                // Bin Packing Logic
+                let blockW, blockD;
+                let attempts = 0;
+                let fits = false;
+
+                do {
+                    blockW = Math.floor(Math.random() * maxBlock) + 1;
+                    blockD = Math.floor(Math.random() * maxBlock) + 1;
+                    
+                    const realW = (blockW * cellSize) - roadGap;
+                    const realD = (blockD * cellSize) - roadGap;
+
+                    if (realW <= 1 || realD <= 1) { attempts++; continue; }
+                    const ratio = Math.max(realW, realD) / Math.min(realW, realD);
+                    if (ratio > 3.0) { attempts++; continue; }
+                    if (x + blockW > gridSize || y + blockD > gridSize) { attempts++; continue; }
+
+                    let clear = true;
+                    for(let i = 0; i < blockW; i++) {
+                        for(let j = 0; j < blockD; j++) {
+                            if(occupied[x+i][y+j]) { clear = false; break; }
+                        }
+                    }
+                    if(clear) fits = true;
+                    attempts++;
+                } while(!fits && attempts < 50);
+
+                if(!fits) { blockW = 1; blockD = 1; }
+
+                for(let i = 0; i < blockW; i++) {
+                    for(let j = 0; j < blockD; j++) { occupied[x+i][y+j] = true; }
+                }
+
+                const cellLeft = (x * cellSize) - (mapPhysicalSize/2);
+                const cellTop = (y * cellSize) - (mapPhysicalSize/2);
+                const totalW = blockW * cellSize;
+                const totalD = blockD * cellSize;
+                const bWidth = totalW - roadGap;
+                const bDepth = totalD - roadGap;
+
+                if (bWidth <= 1 || bDepth <= 1) continue;
+
+                const centerX = cellLeft + (totalW / 2);
+                const centerY = cellTop + (totalD / 2);
+
+                let h;
+                if (blockW === 1 && blockD === 1) {
+                    h = cellSize * (0.5 + Math.random() * 1.5);
+                } else {
+                    const bulkBonus = (blockW * blockD) * (baseHeight * 0.2);
+                    h = baseHeight + bulkBonus + (Math.random() ** 3) * (baseHeight * 3.0);
+                }
+                
+                let style = Math.floor(Math.random() * 5); // 0-4
+
+                // --- ROOF DETAILS GENERATION ---
+                let junk = [];
+                // Only put junk on buildings that aren't tiny slivers
+                if (Math.random() < clutterChance && bWidth > 15 && bDepth > 15) {
+                    // Decide how many items (1 to 3)
+                    const count = Math.floor(Math.random() * 3) + 1;
+                    
+                    for(let k=0; k<count; k++) {
+                        // Dimension of the junk
+                        const jw = Math.max(5, Math.random() * (bWidth * 0.4));
+                        const jd = Math.max(5, Math.random() * (bDepth * 0.4));
+                        const jh = 3 + Math.random() * 8; // Height 3 to 11
+                        
+                        // Position (offset from center)
+                        // Ensure it fits on roof
+                        const maxX = (bWidth/2) - (jw/2);
+                        const maxY = (bDepth/2) - (jd/2);
+                        const jx = (Math.random() * 2 - 1) * maxX;
+                        const jy = (Math.random() * 2 - 1) * maxY;
+
+                        junk.push({
+                            x: jx, y: jy, w: jw, d: jd, h: jh
+                        });
+                    }
+                }
+
+                buildings.push({
+                    x: centerX,
+                    y: centerY,
+                    w: bWidth,
+                    d: bDepth,
+                    h: h,
+                    style: style,
+                    junk: junk
+                });
+            }
+        }
+        draw();
+    }
+
+    function project(x, y, z) {
+        const fov = parseInt(els.fov.value); 
+        const camZ = fov * 1.5; 
+        const dz = camZ - z;
+        if(dz <= 0) return null; 
+        const scale = fov / dz;
+        return { x: width/2 + x * scale, y: height/2 + y * scale };
+    }
+
+    // --- CANVAS RENDER ---
+
+    function draw() {
+        ctx.fillStyle = '#111'; // Black Roads
+        ctx.fillRect(0, 0, width, height);
+        ctx.lineWidth = 1.0;
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#000'; 
+
+        buildings.sort((a, b) => {
+            const distA = a.x*a.x + a.y*a.y;
+            const distB = b.x*b.x + b.y*b.y;
+            return distB - distA;
+        });
+
+        buildings.forEach(b => drawBuildingCanvas(b));
+    }
+
+    const COL_SIDE = '#dcdcdc'; 
+    const COL_ROOF = '#ffffff'; 
+    const COL_JUNK = '#eeeeee';
+    const WIN_COLOR = 'rgba(0,0,0,0.6)'; 
+
+    function drawBuildingCanvas(b) {
+        const hw = b.w/2, hd = b.d/2;
+        const corners = [{x:-hw, y:-hd}, {x:hw, y:-hd}, {x:hw, y:hd}, {x:-hw, y:hd}];
+        const top = corners.map(c => project(b.x+c.x, b.y+c.y, b.h));
+        const bot = corners.map(c => project(b.x+c.x, b.y+c.y, 0));
+        
+        if (top.some(p => !p) || bot.some(p => !p)) return;
+
+        // Draw Building Walls
+        if (b.x < 0) drawWallCanvas(top[1], top[2], bot[2], bot[1], b); // Right
+        if (b.x > 0) drawWallCanvas(top[3], top[0], bot[0], bot[3], b); // Left
+        if (b.y < 0) drawWallCanvas(top[2], top[3], bot[3], bot[2], b); // Front
+        if (b.y > 0) drawWallCanvas(top[0], top[1], bot[1], bot[0], b); // Back
+
+        // Draw Main Roof
+        drawPolyCanvas(top[0], top[1], top[2], top[3], COL_ROOF);
+
+        // Draw Roof Details
+        if(b.junk && b.junk.length > 0) {
+            b.junk.forEach(j => {
+                // Absolute world position of junk
+                const jAbsX = b.x + j.x;
+                const jAbsY = b.y + j.y;
+                // Junk base is building height, top is building height + junk height
+                drawBoxCanvas(jAbsX, jAbsY, b.h, j.w, j.d, j.h);
+            });
+        }
+    }
+
+    function drawBoxCanvas(bx, by, bz, w, d, h) {
+        const hw = w/2, hd = d/2;
+        const corners = [{x:-hw, y:-hd}, {x:hw, y:-hd}, {x:hw, y:hd}, {x:-hw, y:hd}];
+        const top = corners.map(c => project(bx+c.x, by+c.y, bz+h));
+        const bot = corners.map(c => project(bx+c.x, by+c.y, bz));
+        
+        if (top.some(p => !p) || bot.some(p => !p)) return;
+
+        // Draw visible sides of the junk box (simplied, no windows)
+        ctx.fillStyle = COL_JUNK;
+        
+        // Use generic wall drawing without windows logic
+        const wall = (p1, p2, p3, p4) => {
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.lineTo(p3.x, p3.y);
+            ctx.lineTo(p4.x, p4.y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+        };
+
+        if (bx < 0) wall(top[1], top[2], bot[2], bot[1]);
+        if (bx > 0) wall(top[3], top[0], bot[0], bot[3]);
+        if (by < 0) wall(top[2], top[3], bot[3], bot[2]);
+        if (by > 0) wall(top[0], top[1], bot[1], bot[0]);
+
+        // Roof of junk
+        drawPolyCanvas(top[0], top[1], top[2], top[3], COL_ROOF);
+    }
+
+    function drawWallCanvas(p1, p2, p3, p4, b) {
+        ctx.fillStyle = COL_SIDE;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.lineTo(p3.x, p3.y);
+        ctx.lineTo(p4.x, p4.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        if (b.style > 0) {
+            ctx.save();
+            ctx.clip(); 
+            ctx.strokeStyle = WIN_COLOR;
+            ctx.lineWidth = 1;
+            drawWindows(ctx, p1, p2, p3, p4, b);
+            ctx.restore();
+            ctx.strokeStyle = '#000';
+            ctx.stroke();
+        }
+    }
+
+    function drawPolyCanvas(p1, p2, p3, p4, color) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.lineTo(p3.x, p3.y);
+        ctx.lineTo(p4.x, p4.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    // --- WINDOW LOGIC ---
+    function lerp(start, end, t) { return start + (end - start) * t; }
+
+    function drawWindows(target, p1, p2, p3, p4, b) {
+        const isSvg = Array.isArray(target);
+        const h = b.h; const w = b.w;
+        
+        const line = (x1, y1, x2, y2) => {
+            if (isSvg) {
+                target.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="rgba(0,0,0,0.6)" stroke-width="1" />`);
+            } else {
+                target.beginPath(); target.moveTo(x1, y1); target.lineTo(x2, y2); target.stroke();
+            }
+        };
+
+        if (b.style === 1 || b.style === 3) { 
+            const floors = Math.floor(h / 10); 
+            for (let i = 1; i < floors; i++) {
+                const t = i / floors;
+                line(lerp(p1.x, p4.x, t), lerp(p1.y, p4.y, t), lerp(p2.x, p3.x, t), lerp(p2.y, p3.y, t));
+            }
+        }
+        if (b.style === 2 || b.style === 3) { 
+            const cols = Math.floor(w / 8); 
+            for (let i = 1; i < cols; i++) {
+                const t = i / cols;
+                line(lerp(p1.x, p2.x, t), lerp(p1.y, p2.y, t), lerp(p4.x, p3.x, t), lerp(p4.y, p3.y, t));
+            }
+        }
+        if (b.style === 4) { 
+            const t = 0.5;
+            line(lerp(p1.x, p2.x, t), lerp(p1.y, p2.y, t), lerp(p4.x, p3.x, t), lerp(p4.y, p3.y, t));
+        }
+    }
+
+
+    // --- SVG EXPORT ---
+
+    function exportSVG() {
+        let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
+        svg += `<rect width="100%" height="100%" fill="#111"/>`;
+
+        buildings.sort((a, b) => {
+            const distA = a.x*a.x + a.y*a.y;
+            const distB = b.x*b.x + b.y*b.y;
+            return distB - distA;
+        });
+
+        const path = (pts, fill, stroke) => {
+            let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+            for(let i=1; i<pts.length; i++) d += ` L ${pts[i].x.toFixed(1)} ${pts[i].y.toFixed(1)}`;
+            d += " Z";
+            return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="1" stroke-linejoin="round"/>`;
+        };
+
+        // Helper for SVG Roof Details
+        const drawBoxSvg = (bx, by, bz, w, d, h) => {
+            let s = "";
+            const hw = w/2, hd = d/2;
+            const corners = [{x:-hw, y:-hd}, {x:hw, y:-hd}, {x:hw, y:hd}, {x:-hw, y:hd}];
+            const top = corners.map(c => project(bx+c.x, by+c.y, bz+h));
+            const bot = corners.map(c => project(bx+c.x, by+c.y, bz));
+            
+            if (top.some(p => !p) || bot.some(p => !p)) return "";
+
+            const wall = (p1, p2, p3, p4) => path([p1, p2, p3, p4], COL_JUNK, "#000");
+
+            if (bx < 0) s += wall(top[1], top[2], bot[2], bot[1]);
+            if (bx > 0) s += wall(top[3], top[0], bot[0], bot[3]);
+            if (by < 0) s += wall(top[2], top[3], bot[3], bot[2]);
+            if (by > 0) s += wall(top[0], top[1], bot[1], bot[0]);
+
+            s += path([top[0], top[1], top[2], top[3]], COL_ROOF, "#000");
+            return s;
+        };
+
+        buildings.forEach(b => {
+            const hw = b.w/2, hd = b.d/2;
+            const corners = [{x:-hw, y:-hd}, {x:hw, y:-hd}, {x:hw, y:hd}, {x:-hw, y:hd}];
+            const top = corners.map(c => project(b.x+c.x, b.y+c.y, b.h));
+            const bot = corners.map(c => project(b.x+c.x, b.y+c.y, 0));
+            
+            if (top.some(p => !p) || bot.some(p => !p)) return;
+
+            const drawWallSvg = (p1, p2, p3, p4) => {
+                let s = "";
+                s += path([p1, p2, p3, p4], COL_SIDE, "none");
+                if (b.style > 0) {
+                    let winLines = [];
+                    drawWindows(winLines, p1, p2, p3, p4, b);
+                    s += winLines.join('');
+                }
+                s += path([p1, p2, p3, p4], "none", "#000");
+                return s;
+            };
+
+            // Walls
+            if (b.x < 0) svg += drawWallSvg(top[1], top[2], bot[2], bot[1]);
+            if (b.x > 0) svg += drawWallSvg(top[3], top[0], bot[0], bot[3]);
+            if (b.y < 0) svg += drawWallSvg(top[2], top[3], bot[3], bot[2]);
+            if (b.y > 0) svg += drawWallSvg(top[0], top[1], bot[1], bot[0]);
+
+            // Main Roof
+            svg += path([top[0], top[1], top[2], top[3]], COL_ROOF, "#000");
+
+            // Roof Details
+            if(b.junk && b.junk.length > 0) {
+                b.junk.forEach(j => {
+                    svg += drawBoxSvg(b.x + j.x, b.y + j.y, b.h, j.w, j.d, j.h);
+                });
+            }
+        });
+
+        svg += `</svg>`;
+
+        const blob = new Blob([svg], {type: 'image/svg+xml'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'city_detailed.svg';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
+    resize();
+    generateMap();
+
+</script>
+</body>
+</html>
+
