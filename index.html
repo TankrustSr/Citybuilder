@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>City Gen V34 - Rooftop Railings</title>
+    <title>City Gen V41 - Variation</title>
     <style>
         body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
         canvas { display: block; outline: none; }
@@ -65,6 +65,8 @@
         button.primary:hover { background: #357abd; }
         button.secondary { background: #e2a04a; color: white; }
         button.secondary:hover { background: #bd843b; }
+        button.dark { background: #555; color: #fff; }
+        button.dark:hover { background: #777; }
         button:disabled { background: #555; color: #888; cursor: not-allowed; }
         
         .val { color: #888; font-weight: normal; }
@@ -81,26 +83,45 @@
 <div id="controls">
     <div class="control-group">
         <label>Fisheye (FOV) <span class="val" id="fovVal">80</span></label>
-        <input type="range" id="fov" min="10" max="140" value="80">
+        <input type="range" id="fov" min="10" max="170" value="80">
     </div>
     
     <div class="control-group">
-        <label>Major Roads <span class="val" id="majorVal">50</span></label>
-        <input type="range" id="major" min="20" max="100" value="50">
+        <label>City Area <span class="val" id="areaVal">2000</span></label>
+        <input type="range" id="area" min="800" max="8000" step="100" value="2000">
+    </div>
+
+    <div class="control-group">
+        <label>Major Grid Size <span class="val" id="majorSpaceVal">600</span></label>
+        <input type="range" id="majorSpace" min="300" max="1000" step="50" value="600">
     </div>
     <div class="control-group">
-        <label>Minor Roads <span class="val" id="minorVal">15</span></label>
-        <input type="range" id="minor" min="5" max="40" value="15">
+        <label>Subdivisions <span class="val" id="subdivVal">2</span></label>
+        <input type="range" id="subdiv" min="1" max="5" step="1" value="2">
+    </div>
+
+    <div class="control-group">
+        <label>Major Road Width <span class="val" id="majorWidthVal">60</span></label>
+        <input type="range" id="majorWidth" min="30" max="120" value="60">
     </div>
     <div class="control-group">
-        <label>Block Divisions <span class="val" id="gridVal">4</span></label>
-        <input type="range" id="grid" min="2" max="8" step="1" value="4">
+        <label>Minor Road Width <span class="val" id="minorWidthVal">20</span></label>
+        <input type="range" id="minorWidth" min="10" max="50" value="20">
     </div>
 
     <div class="control-group">
         <label>Height Scale <span class="val" id="heightVal">120</span></label>
         <input type="range" id="height" min="20" max="300" value="120">
     </div>
+    <div class="control-group">
+        <label>Height Variance <span class="val" id="hVarVal">0.5</span></label>
+        <input type="range" id="hVar" min="0" max="1.0" step="0.1" value="0.5">
+    </div>
+    <div class="control-group">
+        <label>Width/Depth Variance <span class="val" id="sVarVal">0.3</span></label>
+        <input type="range" id="sVar" min="0" max="1.0" step="0.1" value="0.3">
+    </div>
+
     <div class="control-group">
         <label>Detail Scale <span class="val" id="scaleVal">3</span></label>
         <input type="range" id="scale" min="1" max="6" step="0.5" value="3">
@@ -119,6 +140,14 @@
     </div>
 
     <hr style="border: 0; border-top: 1px solid #444; margin: 10px 0;">
+    <div class="control-group">
+        <label>Sun Rotation <span class="val" id="sunRotVal">45°</span></label>
+        <input type="range" id="sunRot" min="0" max="360" value="45">
+    </div>
+    <div class="control-group">
+        <label>Sun Height <span class="val" id="sunHeightVal">60°</span></label>
+        <input type="range" id="sunHeight" min="10" max="90" value="60">
+    </div>
 
     <div class="angle-inputs">
         <div>
@@ -134,6 +163,7 @@
     <div class="view-group">
         <button id="viewTop">Top View</button>
         <button id="viewSide">Side View</button>
+        <button id="viewPlanet">Tiny Planet</button>
     </div>
     
     <button id="generateBtn">Rebuild City</button>
@@ -142,7 +172,10 @@
         <button id="exportPngBtn">Save View</button>
         <button id="exportDepthBtn" class="primary">Save Depth</button>
     </div>
-    <button id="exportDetailBtn" class="secondary" style="margin-top:5px;">Save Detail Layer</button>
+    <div class="btn-group">
+        <button id="exportShadowBtn" class="dark">Save Shadow/Shade</button>
+        <button id="exportDetailBtn" class="secondary">Save Detail Layer</button>
+    </div>
     
     <div id="loading">Processing...</div>
 </div>
@@ -151,23 +184,36 @@
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x111111);
 
-    const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 1, 6000);
+    const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 1, 50000);
     camera.position.set(600, 600, 600);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
     document.body.appendChild(renderer.domElement);
 
     const controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
 
+    // --- LIGHTING ---
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
     scene.add(ambientLight);
+
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    dirLight.position.set(500, 1500, 1000);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 4096;
+    dirLight.shadow.mapSize.height = 4096;
+    dirLight.shadow.normalBias = 0.05; 
+    dirLight.shadow.bias = -0.0001; 
+    let d = 2500;
+    dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d;
+    dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
+    dirLight.shadow.camera.far = 10000;
     scene.add(dirLight);
+
     const fillLight = new THREE.DirectionalLight(0x9999ff, 0.3);
     fillLight.position.set(-500, 200, -500);
     scene.add(fillLight);
@@ -179,22 +225,30 @@
     // UI Handling
     const els = {
         fov: document.getElementById('fov'),
-        grid: document.getElementById('grid'),
-        major: document.getElementById('major'),
-        minor: document.getElementById('minor'),
+        area: document.getElementById('area'),
+        majorSpace: document.getElementById('majorSpace'),
+        subdiv: document.getElementById('subdiv'),
+        majorWidth: document.getElementById('majorWidth'),
+        minorWidth: document.getElementById('minorWidth'),
         height: document.getElementById('height'),
+        hVar: document.getElementById('hVar'),
+        sVar: document.getElementById('sVar'),
         scale: document.getElementById('scale'),
         darkness: document.getElementById('darkness'),
         clutter: document.getElementById('clutter'),
         railing: document.getElementById('railing'),
+        sunRot: document.getElementById('sunRot'),
+        sunHeight: document.getElementById('sunHeight'),
         btn: document.getElementById('generateBtn'),
         viewTop: document.getElementById('viewTop'),
         viewSide: document.getElementById('viewSide'),
+        viewPlanet: document.getElementById('viewPlanet'),
         polarInput: document.getElementById('polarInput'),
         azInput: document.getElementById('azimuthInput'),
         exportPngBtn: document.getElementById('exportPngBtn'),
         exportDepthBtn: document.getElementById('exportDepthBtn'),
         exportDetailBtn: document.getElementById('exportDetailBtn'),
+        exportShadowBtn: document.getElementById('exportShadowBtn'),
         loading: document.getElementById('loading')
     };
 
@@ -203,11 +257,16 @@
         els[key].addEventListener('input', (e) => {
             let valTxt = e.target.value;
             if(key === 'darkness') valTxt += '%';
+            if(key.includes('sun')) {
+                valTxt += '°';
+                updateSun();
+            }
             document.getElementById(key + 'Val').innerText = valTxt;
+            
             if(key === 'fov') {
                 camera.fov = parseInt(e.target.value);
                 camera.updateProjectionMatrix();
-            } else {
+            } else if (!key.includes('sun')) {
                 generateCity();
             }
         });
@@ -217,7 +276,21 @@
     els.exportPngBtn.addEventListener('click', () => saveImage('view'));
     els.exportDepthBtn.addEventListener('click', () => saveImage('depth'));
     els.exportDetailBtn.addEventListener('click', () => saveImage('detail'));
+    els.exportShadowBtn.addEventListener('click', () => saveImage('shadow'));
 
+    // --- SUN LOGIC ---
+    function updateSun() {
+        const rot = THREE.MathUtils.degToRad(parseInt(els.sunRot.value));
+        const phi = THREE.MathUtils.degToRad(90 - parseInt(els.sunHeight.value));
+        const dist = 3000;
+        const x = dist * Math.sin(phi) * Math.cos(rot);
+        const y = dist * Math.cos(phi);
+        const z = dist * Math.sin(phi) * Math.sin(rot);
+        dirLight.position.set(x, y, z);
+    }
+    updateSun();
+
+    // --- CAMERA LOGIC ---
     controls.addEventListener('change', () => {
         const spherical = new THREE.Spherical().setFromVector3(camera.position);
         const polarDeg = Math.round(THREE.MathUtils.radToDeg(spherical.phi));
@@ -242,23 +315,38 @@
     els.polarInput.addEventListener('input', updateCameraFromInputs);
     els.azInput.addEventListener('input', updateCameraFromInputs);
 
+    // View Presets
     els.viewTop.addEventListener('click', () => {
         controls.target.set(0,0,0);
-        camera.position.set(0, 1200, 0); 
+        const mapSize = parseInt(els.area.value);
+        camera.position.set(0, mapSize * 0.8, 0); 
         camera.lookAt(0,0,0);
+        camera.fov = 80; camera.updateProjectionMatrix();
+        els.fov.value = 80; document.getElementById('fovVal').innerText = "80";
         controls.update();
-        els.polarInput.value = 0;
-        els.azInput.value = 0;
+        els.polarInput.value = 0; els.azInput.value = 0;
     });
 
     els.viewSide.addEventListener('click', () => {
         controls.target.set(0,0,0);
-        const dist = 1000;
+        const mapSize = parseInt(els.area.value);
+        const dist = mapSize * 0.7;
         const polar = THREE.MathUtils.degToRad(60); 
         const az = THREE.MathUtils.degToRad(45);
         const spherical = new THREE.Spherical(dist, polar, az);
         camera.position.setFromSpherical(spherical);
         camera.lookAt(0,0,0);
+        camera.fov = 80; camera.updateProjectionMatrix();
+        els.fov.value = 80; document.getElementById('fovVal').innerText = "80";
+        controls.update();
+    });
+
+    els.viewPlanet.addEventListener('click', () => {
+        controls.target.set(0,0,0);
+        camera.position.set(0.1, 800, 0); 
+        camera.lookAt(0,0,0);
+        camera.fov = 160; camera.updateProjectionMatrix();
+        els.fov.value = 160; document.getElementById('fovVal').innerText = "160";
         controls.update();
     });
 
@@ -282,16 +370,14 @@
 
     function createDetailedBuilding(w, h, d, x, z, floorH, detailColor, railingChance) {
         const geoms = [];
-        const white = new THREE.Color(1.0, 1.0, 1.0); // Body ID (Occluder)
-        const black = new THREE.Color(0.0, 0.0, 0.0); // Detail ID (Visible)
+        const white = new THREE.Color(1.0, 1.0, 1.0); 
+        const black = new THREE.Color(0.0, 0.0, 0.0); 
 
-        // 1. Core Building Body
         const coreGeo = new THREE.BoxGeometry(w, h, d);
         coreGeo.translate(x, h/2, z);
         applyVertexColor(coreGeo, white);
         geoms.push(coreGeo);
 
-        // 2. Facade Details (Ledges/Frames)
         const style = Math.floor(Math.random() * 4);
         if (h > 20 && w > 10 && d > 10 && style > 0) {
             const ledgeProtrusion = 1.5; 
@@ -335,17 +421,14 @@
             }
         }
 
-        // 3. Rooftop Railings / Parapet Walls
-        // Only on larger buildings
         if (Math.random() < railingChance && w > 20 && d > 20) {
-            const railH = floorH * 0.4; // Height of railing
+            const railH = floorH * 0.4; 
             const railThick = 1.5;
             const roofY = h; 
 
-            // Front & Back (along Width)
             const r1 = new THREE.BoxGeometry(w, railH, railThick);
             r1.translate(x, roofY + railH/2, z + d/2 - railThick/2);
-            applyVertexColor(r1, white); // Part of body for occlusion
+            applyVertexColor(r1, white); 
             geoms.push(r1);
 
             const r2 = new THREE.BoxGeometry(w, railH, railThick);
@@ -353,7 +436,6 @@
             applyVertexColor(r2, white);
             geoms.push(r2);
 
-            // Left & Right (along Depth), inset to avoid corner overlap
             const r3 = new THREE.BoxGeometry(railThick, railH, d - 2*railThick);
             r3.translate(x + w/2 - railThick/2, roofY + railH/2, z);
             applyVertexColor(r3, white);
@@ -364,7 +446,6 @@
             applyVertexColor(r4, white);
             geoms.push(r4);
         }
-
 
         if (geoms.length > 0) return THREE.BufferGeometryUtils.mergeBufferGeometries(geoms);
         return null;
@@ -381,71 +462,118 @@
             cityGroup.remove(obj); 
         }
 
-        const divisions = parseInt(els.grid.value);
-        const roadMajor = parseInt(els.major.value);
-        const roadMinor = parseInt(els.minor.value);
+        const mapSize = parseInt(els.area.value); 
+        const majorSpacing = parseInt(els.majorSpace.value);
+        const subdivisions = parseInt(els.subdiv.value);
+        const majorWidth = parseInt(els.majorWidth.value);
+        const minorWidth = parseInt(els.minorWidth.value);
+        
         const baseHeight = parseInt(els.height.value);
+        const hVar = parseFloat(els.hVar.value); // Height Variance
+        const sVar = parseFloat(els.sVar.value); // Size Variance
+
         const clutterChance = parseFloat(els.clutter.value);
         const detailScale = parseFloat(els.scale.value); 
         const floorH = 2.5 * detailScale; 
         const railingChance = parseFloat(els.railing.value);
 
-        // Detail color logic
+        // Update Ground Plane
+        let ground = scene.getObjectByName('ground');
+        if (!ground) {
+            const groundGeo = new THREE.PlaneGeometry(1, 1);
+            groundGeo.rotateX(-Math.PI / 2);
+            groundGeo.translate(0, -0.1, 0);
+            const groundMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+            ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.name = 'ground';
+            ground.receiveShadow = true;
+            scene.add(ground);
+        }
+        ground.scale.set(mapSize * 2, mapSize * 2, 1); 
+
+        // Update Shadow Camera
+        const d = mapSize * 0.8;
+        dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d;
+        dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
+        dirLight.shadow.camera.updateProjectionMatrix();
+
         const darknessMult = 1.0 - (parseInt(els.darkness.value) / 100.0);
         const detailColor = new THREE.Color(darknessMult, darknessMult, darknessMult);
         const white = new THREE.Color(1.0, 1.0, 1.0);
 
-        const mapSize = 1600;
-        let blocks = [{ x: 0, z: 0, w: mapSize, d: mapSize }];
-
-        function splitBlocks(currentBlocks, gap) {
-            let nextBlocks = [];
-            currentBlocks.forEach(b => {
-                let splitVert = Math.random() > 0.5;
-                if (b.w > b.d * 1.5) splitVert = true;
-                else if (b.d > b.w * 1.5) splitVert = false;
-
-                if (splitVert) {
-                    if (b.w < 200) { nextBlocks.push(b); return; }
-                    const splitPt = 0.35 + Math.random() * 0.3;
-                    const w1 = b.w * splitPt - gap/2;
-                    const w2 = b.w * (1-splitPt) - gap/2;
-                    nextBlocks.push({ x: b.x - b.w/2 + w1/2, z: b.z, w: w1, d: b.d });
-                    nextBlocks.push({ x: b.x + b.w/2 - w2/2, z: b.z, w: w2, d: b.d });
-                } else {
-                    if (b.d < 200) { nextBlocks.push(b); return; }
-                    const splitPt = 0.35 + Math.random() * 0.3;
-                    const d1 = b.d * splitPt - gap/2;
-                    const d2 = b.d * (1-splitPt) - gap/2;
-                    nextBlocks.push({ x: b.x, z: b.z - b.d/2 + d1/2, w: b.w, d: d1 });
-                    nextBlocks.push({ x: b.x, z: b.z + b.d/2 - d2/2, w: b.w, d: d2 });
+        // --- GRID ALGORITHM ---
+        const blocks = [];
+        
+        function getGridLines(size, spacing, subs, wMajor, wMinor) {
+            const half = size / 2;
+            const lines = []; 
+            const count = Math.ceil(half / spacing);
+            for(let i = -count; i <= count; i++) {
+                const pos = i * spacing;
+                lines.push({ pos: pos, width: wMajor });
+                const subStep = spacing / (subs + 1);
+                for(let k=1; k<=subs; k++) {
+                    const mPos = pos + (k * subStep);
+                    if (mPos < half) {
+                        lines.push({ pos: mPos, width: wMinor });
+                    }
                 }
-            });
-            return nextBlocks;
+            }
+            return lines.filter(l => l.pos > -half && l.pos < half).sort((a,b) => a.pos - b.pos);
         }
 
-        for(let i=0; i<divisions; i++) blocks = splitBlocks(blocks, roadMajor); 
-        for(let i=0; i<2; i++) blocks = splitBlocks(blocks, roadMinor);
+        const xLines = getGridLines(mapSize, majorSpacing, subdivisions, majorWidth, minorWidth);
+        const zLines = getGridLines(mapSize, majorSpacing, subdivisions, majorWidth, minorWidth);
+        const halfSize = mapSize/2;
+        
+        const xIntervals = []; 
+        let currentX = -halfSize;
+        xLines.forEach(line => {
+            const roadStart = line.pos - line.width/2;
+            const roadEnd = line.pos + line.width/2;
+            if (roadStart > currentX) xIntervals.push({ start: currentX, end: roadStart });
+            currentX = roadEnd;
+        });
+        if (currentX < halfSize) xIntervals.push({ start: currentX, end: halfSize });
+
+        const zIntervals = [];
+        let currentZ = -halfSize;
+        zLines.forEach(line => {
+            const roadStart = line.pos - line.width/2;
+            const roadEnd = line.pos + line.width/2;
+            if (roadStart > currentZ) zIntervals.push({ start: currentZ, end: roadStart });
+            currentZ = roadEnd;
+        });
+        if (currentZ < halfSize) zIntervals.push({ start: currentZ, end: halfSize });
+
+        xIntervals.forEach(xInt => {
+            zIntervals.forEach(zInt => {
+                blocks.push({ x: xInt.start + (xInt.end - xInt.start)/2, z: zInt.start + (zInt.end - zInt.start)/2, w: xInt.end - xInt.start, d: zInt.end - zInt.start });
+            });
+        });
 
         maxCityHeight = baseHeight;
 
         const allBuildingGeoms = [];
         const allJunkGeoms = [];
-        const allJunkLines = []; // Store junk contours here
+        const allJunkLines = []; 
 
         blocks.forEach(block => {
             const margin = 2; 
-            const buildW = block.w - margin;
-            const buildD = block.d - margin;
+            const buildW = block.w - margin*2;
+            const buildD = block.d - margin*2;
             if (buildW < 15 || buildD < 15) return;
 
             let subDivs = [];
-            if (buildW > buildD * 2.5) {
-                const count = Math.floor(buildW / 50);
+            // Randomize unit width slightly per block for variety
+            const unitSize = 50 + (Math.random() * 20); 
+            
+            if (buildW > buildD * 1.5) {
+                const count = Math.max(1, Math.floor(buildW / unitSize));
                 const segW = buildW / count;
                 for(let k=0; k<count; k++) subDivs.push({ x: block.x - buildW/2 + segW*k + segW/2, z: block.z, w: segW-2, d: buildD });
-            } else if (buildD > buildW * 2.5) {
-                const count = Math.floor(buildD / 50);
+            } else if (buildD > buildW * 1.5) {
+                const count = Math.max(1, Math.floor(buildD / unitSize));
                 const segD = buildD / count;
                 for(let k=0; k<count; k++) subDivs.push({ x: block.x, z: block.z - buildD/2 + segD*k + segD/2, w: buildW, d: segD-2 });
             } else {
@@ -453,37 +581,48 @@
             }
 
             subDivs.forEach(b => {
-                const footprint = b.w * b.d;
+                // Apply Width/Depth Variance (Shrink random amount)
+                // sVar 0 = 100% fill. sVar 1 = up to 60% shrinkage
+                const shrinkX = 1.0 - (Math.random() * sVar * 0.6);
+                const shrinkZ = 1.0 - (Math.random() * sVar * 0.6);
+                const finalW = b.w * shrinkX;
+                const finalD = b.d * shrinkZ;
+
+                // Center bias height
+                const distFromCenter = Math.sqrt(b.x*b.x + b.z*b.z);
+                const centerFactor = Math.max(0, 1 - (distFromCenter / (mapSize * 0.6)));
+                
+                // Height Calculation with Variance
                 let h;
-                if (footprint < 2000) h = 20 + Math.random() * 40; 
+                const footprint = finalW * finalD;
+                if (footprint < 800) h = 20 + Math.random() * 30; 
                 else {
-                    const bulkBonus = footprint * (baseHeight * 0.0001);
-                    h = baseHeight + bulkBonus + (Math.random() ** 3) * (baseHeight * 3.5);
+                    // Base calculated height
+                    const hCalc = baseHeight * 0.5 + (baseHeight * centerFactor);
+                    // Add Noise based on hVar
+                    const noise = (Math.random() - 0.5) * 2 * (baseHeight * hVar); 
+                    h = Math.max(30, hCalc + noise);
                 }
                 
                 maxCityHeight = Math.max(maxCityHeight, h);
-                // Pass railing chance
-                const bGeo = createDetailedBuilding(b.w, h, b.d, b.x, b.z, floorH, detailColor, railingChance);
+                const bGeo = createDetailedBuilding(finalW, h, finalD, b.x, b.z, floorH, detailColor, railingChance);
                 if (bGeo) allBuildingGeoms.push(bGeo);
 
-                if (Math.random() < clutterChance && b.w > 15 && b.d > 15) {
+                if (Math.random() < clutterChance && finalW > 15 && finalD > 15) {
                     const count = Math.floor(Math.random() * 3) + 1;
                     for(let k=0; k<count; k++) {
-                        const jw = Math.max(4, Math.random() * (b.w * 0.4));
-                        const jd = Math.max(4, Math.random() * (b.d * 0.4));
+                        const jw = Math.max(4, Math.random() * (finalW * 0.4));
+                        const jd = Math.max(4, Math.random() * (finalD * 0.4));
                         const jh = 3 + Math.random() * 8; 
                         maxCityHeight = Math.max(maxCityHeight, h + jh);
-                        const jx = (Math.random() * 2 - 1) * ((b.w/2) - (jw/2));
-                        const jz = (Math.random() * 2 - 1) * ((b.d/2) - (jd/2));
+                        const jx = (Math.random() * 2 - 1) * ((finalW/2) - (jw/2));
+                        const jz = (Math.random() * 2 - 1) * ((finalD/2) - (jd/2));
                         
                         const junkGeo = new THREE.BoxGeometry(jw, jh, jd);
                         junkGeo.translate(b.x + jx, h + jh/2, b.z + jz);
-                        
-                        // JUNK BODY: White (Transparency Mask)
                         applyVertexColor(junkGeo, white);
                         allJunkGeoms.push(junkGeo);
 
-                        // JUNK EDGES: Create now, before merging
                         const edgeGeo = new THREE.EdgesGeometry(junkGeo);
                         allJunkLines.push(edgeGeo);
                     }
@@ -491,29 +630,29 @@
             });
         });
 
-        // 1. Create Meshes
         const matWhite = new THREE.MeshLambertMaterial({ color: 0xffffff });
         const matJunk = new THREE.MeshLambertMaterial({ color: 0xcccccc });
 
         if (allBuildingGeoms.length > 0) {
             const mergedBuildings = THREE.BufferGeometryUtils.mergeBufferGeometries(allBuildingGeoms);
             const cityMesh = new THREE.Mesh(mergedBuildings, matWhite);
+            cityMesh.castShadow = true;
+            cityMesh.receiveShadow = true;
             cityGroup.add(cityMesh);
             
-            // Standard Building Outline (will include railings)
-            const edges = new THREE.EdgesGeometry(mergedBuildings, 25); // Higher threshold for cleaner lines
+            const edges = new THREE.EdgesGeometry(mergedBuildings, 25);
             const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000 }));
             cityMesh.add(line);
         }
 
-        // 2. Junk Bodies
         if (allJunkGeoms.length > 0) {
             const mergedJunk = THREE.BufferGeometryUtils.mergeBufferGeometries(allJunkGeoms);
             const junkMesh = new THREE.Mesh(mergedJunk, matJunk);
+            junkMesh.castShadow = true;
+            junkMesh.receiveShadow = true;
             cityGroup.add(junkMesh);
         }
 
-        // 3. Junk Contours (Separate Lines)
         if (allJunkLines.length > 0) {
             const mergedLines = THREE.BufferGeometryUtils.mergeBufferGeometries(allJunkLines);
             const junkContours = new THREE.LineSegments(mergedLines, new THREE.LineBasicMaterial({ color: 0x000000 }));
@@ -556,9 +695,9 @@
             varying vec3 vDetailColor;
             void main() {
                 if (vDetailColor.r > 0.5) {
-                    gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0); // Transparent Body
+                    gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
                 } else {
-                    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); // Visible Detail
+                    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
                 }
             }
         `
@@ -568,6 +707,7 @@
         let btn;
         if(mode === 'view') btn = els.exportPngBtn;
         else if(mode === 'depth') btn = els.exportDepthBtn;
+        else if(mode === 'shadow') btn = els.exportShadowBtn;
         else btn = els.exportDetailBtn;
 
         btn.disabled = true;
@@ -584,30 +724,21 @@
             camera.updateProjectionMatrix();
 
             const originalBackground = scene.background;
-            
-            // VISIBILITY MANAGEMENT
             const hiddenLines = [];
-            cityGroup.traverse(obj => {
-                if (obj.isLineSegments) {
-                    // Default: Hide all lines
-                    obj.visible = false;
-                    
-                    // EXCEPTION: In Detail Mode, SHOW Junk Contours AND Main building contours (which now include railings)
-                    if (mode === 'detail') {
-                         obj.visible = true;
-                    }
-                    // In View Mode, show everything
-                    if (mode === 'view') {
-                        obj.visible = true;
-                    }
-                    
-                    // Track only if we hid it, so we can restore
-                    if (!obj.visible) hiddenLines.push(obj);
-                }
-            });
 
-            // MATERIAL SWAPPING
-            const restoreMaterials = []; // Array of {obj, mat}
+            if(mode !== 'view') {
+                cityGroup.traverse(obj => {
+                    if (obj.isLineSegments) {
+                        obj.visible = false;
+                        if (mode === 'detail' && obj.userData.isDetailLayer) {
+                             obj.visible = true;
+                        }
+                        if (!obj.visible) hiddenLines.push(obj);
+                    }
+                });
+            }
+
+            const restoreMaterials = []; 
 
             if(mode === 'depth') {
                 scene.background = new THREE.Color(0x000000); 
@@ -621,21 +752,26 @@
             else if (mode === 'detail') {
                 scene.background = null; 
                 renderer.setClearColor(0x000000, 0); 
-
                 const detMat = new THREE.ShaderMaterial({
                     vertexShader: detailShader.vertexShader,
                     fragmentShader: detailShader.fragmentShader,
-                    transparent: false,
-                    blending: THREE.NoBlending 
+                    transparent: false, blending: THREE.NoBlending 
                 });
-                
-                // Manually apply to Meshes only (avoid lines)
                 cityGroup.traverse(obj => {
                     if (obj.isMesh) {
                         restoreMaterials.push({obj: obj, mat: obj.material});
                         obj.material = detMat;
                     }
                 });
+            }
+            else if (mode === 'shadow') {
+                scene.background = new THREE.Color(0xffffff); 
+                const ground = scene.getObjectByName('ground');
+                if(ground) {
+                    restoreMaterials.push({obj: ground, mat: ground.material});
+                    ground.material = new THREE.MeshLambertMaterial({ color: 0xffffff });
+                }
+                scene.overrideMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
             }
 
             renderer.render(scene, camera);
@@ -647,29 +783,24 @@
                 let filename = 'city_view.png';
                 if(mode === 'depth') filename = 'city_depth_map.png';
                 if(mode === 'detail') filename = 'city_detail_layer.png';
+                if(mode === 'shadow') filename = 'city_shadow_map.png';
                 a.download = filename;
                 a.click();
                 URL.revokeObjectURL(url);
 
-                // RESET
                 renderer.setSize(originalSize.x, originalSize.y);
                 camera.aspect = originalAspect;
                 camera.updateProjectionMatrix();
                 
-                if(mode === 'depth') {
+                if(mode !== 'view') {
                     scene.background = originalBackground;
                     scene.overrideMaterial = null;
-                } else if (mode === 'detail') {
-                    scene.background = originalBackground;
                     renderer.setClearColor(0x000000, 1);
-                    // Restore original materials
                     restoreMaterials.forEach(item => {
                         item.obj.material = item.mat;
                     });
+                    hiddenLines.forEach(l => l.visible = true);
                 }
-                
-                // Restore visibility
-                hiddenLines.forEach(l => l.visible = true);
 
                 renderer.render(scene, camera);
                 btn.disabled = false;
