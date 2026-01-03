@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>City Gen V41 - Variation</title>
+    <title>City Gen V43 - Shadow Fix 2</title>
     <style>
         body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
         canvas { display: block; outline: none; }
@@ -204,10 +204,17 @@
 
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
     dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 4096;
-    dirLight.shadow.mapSize.height = 4096;
-    dirLight.shadow.normalBias = 0.05; 
+    
+    // SHADOW SETTINGS (Fix V2)
+    dirLight.shadow.mapSize.width = 8192;
+    dirLight.shadow.mapSize.height = 8192;
+    
+    // IMPORTANT: NormalBias 0 prevents geometry shrinking (leaks)
+    // Bias negative prevents acne
+    dirLight.shadow.normalBias = 0.0; 
     dirLight.shadow.bias = -0.0001; 
+
+    // Initial shadow camera
     let d = 2500;
     dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d;
     dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
@@ -356,7 +363,6 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // --- GEOMETRY ---
     function applyVertexColor(geometry, color) {
         const count = geometry.attributes.position.count;
         const colors = new Float32Array(count * 3);
@@ -469,15 +475,15 @@
         const minorWidth = parseInt(els.minorWidth.value);
         
         const baseHeight = parseInt(els.height.value);
-        const hVar = parseFloat(els.hVar.value); // Height Variance
-        const sVar = parseFloat(els.sVar.value); // Size Variance
+        const hVar = parseFloat(els.hVar.value);
+        const sVar = parseFloat(els.sVar.value);
 
         const clutterChance = parseFloat(els.clutter.value);
         const detailScale = parseFloat(els.scale.value); 
         const floorH = 2.5 * detailScale; 
         const railingChance = parseFloat(els.railing.value);
 
-        // Update Ground Plane
+        // Update Ground
         let ground = scene.getObjectByName('ground');
         if (!ground) {
             const groundGeo = new THREE.PlaneGeometry(1, 1);
@@ -565,7 +571,6 @@
             if (buildW < 15 || buildD < 15) return;
 
             let subDivs = [];
-            // Randomize unit width slightly per block for variety
             const unitSize = 50 + (Math.random() * 20); 
             
             if (buildW > buildD * 1.5) {
@@ -581,25 +586,19 @@
             }
 
             subDivs.forEach(b => {
-                // Apply Width/Depth Variance (Shrink random amount)
-                // sVar 0 = 100% fill. sVar 1 = up to 60% shrinkage
                 const shrinkX = 1.0 - (Math.random() * sVar * 0.6);
                 const shrinkZ = 1.0 - (Math.random() * sVar * 0.6);
                 const finalW = b.w * shrinkX;
                 const finalD = b.d * shrinkZ;
 
-                // Center bias height
                 const distFromCenter = Math.sqrt(b.x*b.x + b.z*b.z);
                 const centerFactor = Math.max(0, 1 - (distFromCenter / (mapSize * 0.6)));
                 
-                // Height Calculation with Variance
                 let h;
                 const footprint = finalW * finalD;
                 if (footprint < 800) h = 20 + Math.random() * 30; 
                 else {
-                    // Base calculated height
                     const hCalc = baseHeight * 0.5 + (baseHeight * centerFactor);
-                    // Add Noise based on hVar
                     const noise = (Math.random() - 0.5) * 2 * (baseHeight * hVar); 
                     h = Math.max(30, hCalc + noise);
                 }
@@ -619,7 +618,8 @@
                         const jz = (Math.random() * 2 - 1) * ((finalD/2) - (jd/2));
                         
                         const junkGeo = new THREE.BoxGeometry(jw, jh, jd);
-                        junkGeo.translate(b.x + jx, h + jh/2, b.z + jz);
+                        // LIFT JUNK BY 0.1 TO AVOID INTERSECTION
+                        junkGeo.translate(b.x + jx, h + jh/2 + 0.1, b.z + jz);
                         applyVertexColor(junkGeo, white);
                         allJunkGeoms.push(junkGeo);
 
@@ -630,6 +630,7 @@
             });
         });
 
+        // REVERTED SHADOW SIDE TO DEFAULT (FrontSide)
         const matWhite = new THREE.MeshLambertMaterial({ color: 0xffffff });
         const matJunk = new THREE.MeshLambertMaterial({ color: 0xcccccc });
 
