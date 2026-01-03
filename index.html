@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>City Gen V43 - Shadow Fix 2</title>
+    <title>City Gen V50 - Browser Storage</title>
     <style>
         body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
         canvas { display: block; outline: none; }
@@ -29,6 +29,29 @@
         label { display: block; font-weight: 700; margin-bottom: 4px; color: #ccc; display: flex; justify-content: space-between; }
         input[type=range] { width: 100%; cursor: pointer; accent-color: #fff; }
         
+        /* New Input Styles */
+        input[type=text] {
+            width: 100%; 
+            padding: 6px; 
+            margin-bottom: 5px; 
+            background: #222; 
+            border: 1px solid #555; 
+            color: #fff; 
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        
+        select {
+            width: 100%; 
+            padding: 6px; 
+            margin-bottom: 5px; 
+            background: #222; 
+            border: 1px solid #555; 
+            color: #fff; 
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
         button {
             width: 100%;
             padding: 8px; 
@@ -67,6 +90,17 @@
         button.secondary:hover { background: #bd843b; }
         button.dark { background: #555; color: #fff; }
         button.dark:hover { background: #777; }
+        
+        button.save { background: #28a745; color: white; margin-bottom: 5px; } 
+        button.save:hover { background: #218838; }
+        
+        button.delete { background: #a72828; color: white; width: 48%; } 
+        button.delete:hover { background: #882121; }
+        
+        button.load { background: #4a90e2; color: white; width: 48%; }
+        
+        .storage-row { display: flex; justify-content: space-between; }
+
         button:disabled { background: #555; color: #888; cursor: not-allowed; }
         
         .val { color: #888; font-weight: normal; }
@@ -81,6 +115,18 @@
 <body>
 
 <div id="controls">
+    <div style="margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px;">
+        <label style="color:#fff; margin-bottom:5px;">Save/Load Layout</label>
+        <input type="text" id="saveName" placeholder="Enter layout name...">
+        <button id="saveBtn" class="save">Save to Browser</button>
+        
+        <select id="saveList"></select>
+        <div class="storage-row">
+            <button id="loadBtn" class="load">Load</button>
+            <button id="deleteBtn" class="delete">Delete</button>
+        </div>
+    </div>
+
     <div class="control-group">
         <label>Fisheye (FOV) <span class="val" id="fovVal">80</span></label>
         <input type="range" id="fov" min="10" max="170" value="80">
@@ -205,16 +251,13 @@
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
     dirLight.castShadow = true;
     
-    // SHADOW SETTINGS (Fix V2)
+    // SHADOW SETTINGS (Precision Fix)
     dirLight.shadow.mapSize.width = 8192;
     dirLight.shadow.mapSize.height = 8192;
-    
-    // IMPORTANT: NormalBias 0 prevents geometry shrinking (leaks)
-    // Bias negative prevents acne
     dirLight.shadow.normalBias = 0.0; 
-    dirLight.shadow.bias = -0.0001; 
+    dirLight.shadow.bias = -0.00005; 
 
-    // Initial shadow camera
+    // Initial shadow camera setup
     let d = 2500;
     dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d;
     dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
@@ -256,11 +299,17 @@
         exportDepthBtn: document.getElementById('exportDepthBtn'),
         exportDetailBtn: document.getElementById('exportDetailBtn'),
         exportShadowBtn: document.getElementById('exportShadowBtn'),
+        // SAVE SYSTEM UI
+        saveName: document.getElementById('saveName'),
+        saveBtn: document.getElementById('saveBtn'),
+        saveList: document.getElementById('saveList'),
+        loadBtn: document.getElementById('loadBtn'),
+        deleteBtn: document.getElementById('deleteBtn'),
         loading: document.getElementById('loading')
     };
 
     Object.keys(els).forEach(key => {
-        if(key.includes('Btn') || key.includes('view') || key.includes('Input') || key === 'loading') return;
+        if(key.includes('Btn') || key.includes('view') || key.includes('Input') || key === 'loading' || key === 'saveName' || key === 'saveList') return;
         els[key].addEventListener('input', (e) => {
             let valTxt = e.target.value;
             if(key === 'darkness') valTxt += '%';
@@ -285,6 +334,113 @@
     els.exportDetailBtn.addEventListener('click', () => saveImage('detail'));
     els.exportShadowBtn.addEventListener('click', () => saveImage('shadow'));
 
+    // --- BROWSER STORAGE LOGIC ---
+    const STORAGE_KEY = 'city_gen_saves';
+
+    function getSaves() {
+        const data = localStorage.getItem(STORAGE_KEY);
+        return data ? JSON.parse(data) : {};
+    }
+
+    function saveSaves(saves) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(saves));
+    }
+
+    function updateSaveList() {
+        const saves = getSaves();
+        els.saveList.innerHTML = '';
+        Object.keys(saves).forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.innerText = name;
+            els.saveList.appendChild(option);
+        });
+    }
+
+    els.saveBtn.addEventListener('click', () => {
+        const name = els.saveName.value.trim();
+        if (!name) {
+            alert('Please enter a name for your layout.');
+            return;
+        }
+        
+        const config = {
+            fov: els.fov.value,
+            area: els.area.value,
+            majorSpace: els.majorSpace.value,
+            subdiv: els.subdiv.value,
+            majorWidth: els.majorWidth.value,
+            minorWidth: els.minorWidth.value,
+            height: els.height.value,
+            hVar: els.hVar.value,
+            sVar: els.sVar.value,
+            scale: els.scale.value,
+            darkness: els.darkness.value,
+            clutter: els.clutter.value,
+            railing: els.railing.value,
+            sunRot: els.sunRot.value,
+            sunHeight: els.sunHeight.value,
+            cameraPos: camera.position.toArray(),
+            targetPos: controls.target.toArray()
+        };
+
+        const saves = getSaves();
+        saves[name] = config;
+        saveSaves(saves);
+        updateSaveList();
+        els.saveName.value = ''; // Clear input
+        // Select the newly saved item
+        els.saveList.value = name;
+    });
+
+    els.loadBtn.addEventListener('click', () => {
+        const name = els.saveList.value;
+        if (!name) return;
+
+        const saves = getSaves();
+        const config = saves[name];
+        
+        if (config) {
+            // Restore UI values
+            Object.keys(config).forEach(key => {
+                if (els[key]) {
+                    els[key].value = config[key];
+                    // Trigger input event manually to update labels
+                    els[key].dispatchEvent(new Event('input'));
+                }
+            });
+
+            // Restore Camera
+            if(config.cameraPos) {
+                camera.position.fromArray(config.cameraPos);
+                camera.fov = parseInt(config.fov);
+                camera.updateProjectionMatrix();
+            }
+            if(config.targetPos) {
+                controls.target.fromArray(config.targetPos);
+            }
+            
+            controls.update();
+            updateSun();
+            generateCity();
+        }
+    });
+
+    els.deleteBtn.addEventListener('click', () => {
+        const name = els.saveList.value;
+        if (!name) return;
+        if (confirm(`Delete layout "${name}"?`)) {
+            const saves = getSaves();
+            delete saves[name];
+            saveSaves(saves);
+            updateSaveList();
+        }
+    });
+
+    // Init List
+    updateSaveList();
+
+
     // --- SUN LOGIC ---
     function updateSun() {
         const rot = THREE.MathUtils.degToRad(parseInt(els.sunRot.value));
@@ -294,6 +450,20 @@
         const y = dist * Math.cos(phi);
         const z = dist * Math.sin(phi) * Math.sin(rot);
         dirLight.position.set(x, y, z);
+        
+        // Tight-fit shadow cam for precision
+        const mapSize = parseInt(els.area.value);
+        const margin = 200;
+        const d = (mapSize / 2) + margin;
+        
+        dirLight.shadow.camera.left = -d;
+        dirLight.shadow.camera.right = d;
+        dirLight.shadow.camera.top = d;
+        dirLight.shadow.camera.bottom = -d;
+        dirLight.shadow.camera.near = 100;
+        dirLight.shadow.camera.far = 10000; 
+        
+        dirLight.shadow.camera.updateProjectionMatrix();
     }
     updateSun();
 
@@ -483,7 +653,6 @@
         const floorH = 2.5 * detailScale; 
         const railingChance = parseFloat(els.railing.value);
 
-        // Update Ground
         let ground = scene.getObjectByName('ground');
         if (!ground) {
             const groundGeo = new THREE.PlaneGeometry(1, 1);
@@ -497,11 +666,7 @@
         }
         ground.scale.set(mapSize * 2, mapSize * 2, 1); 
 
-        // Update Shadow Camera
-        const d = mapSize * 0.8;
-        dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d;
-        dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
-        dirLight.shadow.camera.updateProjectionMatrix();
+        updateSun();
 
         const darknessMult = 1.0 - (parseInt(els.darkness.value) / 100.0);
         const detailColor = new THREE.Color(darknessMult, darknessMult, darknessMult);
@@ -618,8 +783,7 @@
                         const jz = (Math.random() * 2 - 1) * ((finalD/2) - (jd/2));
                         
                         const junkGeo = new THREE.BoxGeometry(jw, jh, jd);
-                        // LIFT JUNK BY 0.1 TO AVOID INTERSECTION
-                        junkGeo.translate(b.x + jx, h + jh/2 + 0.1, b.z + jz);
+                        junkGeo.translate(b.x + jx, h + jh/2 - 0.2, b.z + jz);
                         applyVertexColor(junkGeo, white);
                         allJunkGeoms.push(junkGeo);
 
@@ -630,7 +794,6 @@
             });
         });
 
-        // REVERTED SHADOW SIDE TO DEFAULT (FrontSide)
         const matWhite = new THREE.MeshLambertMaterial({ color: 0xffffff });
         const matJunk = new THREE.MeshLambertMaterial({ color: 0xcccccc });
 
@@ -726,6 +889,12 @@
 
             const originalBackground = scene.background;
             const hiddenLines = [];
+            const ground = scene.getObjectByName('ground');
+
+            // HIDE GROUND FOR DETAIL EXPORT (TRANSPARENT ROADS FIX)
+            if (mode === 'detail' && ground) {
+                ground.visible = false;
+            }
 
             if(mode !== 'view') {
                 cityGroup.traverse(obj => {
@@ -767,7 +936,6 @@
             }
             else if (mode === 'shadow') {
                 scene.background = new THREE.Color(0xffffff); 
-                const ground = scene.getObjectByName('ground');
                 if(ground) {
                     restoreMaterials.push({obj: ground, mat: ground.material});
                     ground.material = new THREE.MeshLambertMaterial({ color: 0xffffff });
@@ -793,6 +961,11 @@
                 camera.aspect = originalAspect;
                 camera.updateProjectionMatrix();
                 
+                // RESTORE GROUND VISIBILITY
+                if (mode === 'detail' && ground) {
+                    ground.visible = true;
+                }
+
                 if(mode !== 'view') {
                     scene.background = originalBackground;
                     scene.overrideMaterial = null;
